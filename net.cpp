@@ -35,7 +35,7 @@ float cc0::net::layer::sum_dow(const float *weights, const cc0::net::layer &next
 void cc0::net::layer::calculate_hidden_gradients(const cc0::net::layer &next_layer, float (*transfer_derived_fn)(float))
 {
 	if (this != nullptr) {
-		for (uint64_t i = 0; get_neuron_count_with_bias(); ++i) {
+		for (uint64_t i = 0; i < get_neuron_count_with_bias(); ++i) {
 			get_gradients()[i] = calculate_hidden_gradient(get_neurons()[i], get_weights(i), next_layer, transfer_derived_fn);
 		}
 	}
@@ -48,7 +48,7 @@ float cc0::net::layer::calculate_hidden_gradient(float neuron, const float *weig
 
 void cc0::net::layer::update_weights(cc0::net::layer &prev_layer)
 {
-	for (uint64_t i = 0; get_neuron_count(); ++i) {
+	for (uint64_t i = 0; i < get_neuron_count(); ++i) {
 		update_weights(i, prev_layer);
 	}
 }
@@ -256,7 +256,7 @@ void cc0::net::update_error(const layer &out, const float *expected_outputs)
 cc0::net::net( void ) : m_buffer(), m_layers(), m_transfer_fn(common::fast_sigmoid), m_transfer_derived_fn(common::derive_fast_sigmoid), m_error(0.0f)
 {}
 
-cc0::net::net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)())
+cc0::net::net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)()) : net()
 {
 	create(topography, num_layers, random_fn);
 }
@@ -274,8 +274,6 @@ void cc0::net::create(const uint32_t *topography, uint32_t num_layers, float (*r
 	}
 	m_buffer.create(total_memory);
 	m_layers.create(num_layers);
-
-	std::cout << "(" << num_layers << "," << total_memory << ") " << std::flush;
 
 	float *ptr = m_buffer;
 	if (ptr != nullptr) {
