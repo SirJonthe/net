@@ -62,8 +62,10 @@ void cc0::net::layer::update_weights(uint64_t neuron_index, cc0::net::layer &pre
 	const float neuron = get_neurons()[neuron_index];
 	const float gradient = get_gradients()[neuron_index];
 	for (uint64_t i = 0; i < prev_layer.get_neuron_count_with_bias(); ++i) {
-		prev_layer.get_delta_weights(i)[neuron_index] = ETA * neuron * gradient + ALPHA * prev_layer.get_delta_weights(i)[neuron_index];
-		prev_layer.get_weights(i)[neuron_index] += prev_layer.get_delta_weights(i)[neuron_index];
+		prev_layer.get_delta_weights(i)[neuron_index] =
+			ETA * neuron * gradient +
+			ALPHA * prev_layer.get_delta_weights(i)[neuron_index];
+		prev_layer.get_weights(i)[neuron_index] += prev_layer.get_delta_weights(i)[neuron_index]; // TODO I do not think we need to save the delta_weight. Just assign the delta here...
 	}
 }
 
