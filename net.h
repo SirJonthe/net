@@ -53,15 +53,34 @@ namespace cc0
 	/// @brief Contains some default components that can be swapped out for custom ones in the neural network.
 	namespace common
 	{
-		/// @brief The fast sigmoid function.
-		/// @param x The input.
-		/// @return The output.
-		float fast_sigmoid(float x);
-		
-		/// @brief Derive the output from the fast sigmoid function.
-		/// @param y The input (output from fast_sigmoid).
-		/// @return The output.
-		float derive_fast_sigmoid(float y);
+		/// @brief Contains some default transfer functions and their derivatives.
+
+		namespace transfer
+		{
+			/// @brief The fast sigmoid function.
+			/// @param x The input.
+			/// @return The output.
+			/// @sa d_fsig
+			float fsig(float x);
+			
+			/// @brief Derive the output from the fast sigmoid function.
+			/// @param y The input (output from fsig).
+			/// @return The output.
+			/// @sa fsig
+			float d_fsig(float y);
+
+			/// @brief Trigonometric transfer function.
+			/// @param x The input.
+			/// @return The output.
+			/// @sa d_tanh
+			float tanh(float x);
+
+			/// @brief Derive the output from the trigionometric transfer function.
+			/// @param y The input (output from tanh).
+			/// @return The output.
+			/// @sa tanh
+			float d_tanh(float y);
+		}
 		
 		/// @brief Generate a random number between 0-1.
 		/// @return A random number between 0-1.
@@ -215,7 +234,7 @@ namespace cc0
 			/// @brief Feeds values forward to the next layer in the neural network.
 			/// @param transfer_fn The transfer function to use.
 			/// @note The number of neurons in the next layer must correspond to the number of weights allocated for the layer feeding values into the next layer.
-			void feed_forward(float (*transfer_fn)(float) = common::fast_sigmoid) const;
+			void feed_forward(float (*transfer_fn)(float) = common::transfer::fsig) const;
 
 			/// @brief Calculates the memory usage (in number of elements) needed for a layer with the specified requirements.
 			/// @param neuron_count The number of neurons to be used.

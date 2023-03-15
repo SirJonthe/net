@@ -225,14 +225,24 @@ float cc0::common::random_unit( void )
 	return rand() * rand_weight;
 }
 
-float cc0::common::fast_sigmoid(float x)
+float cc0::common::transfer::fsig(float x)
 {
 	return x / (1.0f + std::abs(x));
 }
 
-float cc0::common::derive_fast_sigmoid(float y)
+float cc0::common::transfer::d_fsig(float y)
 {
 	return y * (1.0f - y);
+}
+
+float cc0::common::transfer::tanh(float x)
+{
+	return std::tanh(x);
+}
+
+float cc0::common::transfer::d_tanh(float y)
+{
+	return 1.0f - y * y;
 }
 
 cc0::net::layer &cc0::net::get_output_layer( void )
@@ -255,14 +265,14 @@ void cc0::net::update_error(const layer &out, const float *expected_outputs)
 	m_error = sqrtf(m_error / out.get_neuron_count());
 }
 
-cc0::net::net( void ) : m_buffer(), m_layers(), m_transfer_fn(common::fast_sigmoid), m_transfer_derived_fn(common::derive_fast_sigmoid), m_error(0.0f)
+cc0::net::net( void ) : m_buffer(), m_layers(), m_transfer_fn(common::transfer::fsig), m_transfer_derived_fn(common::transfer::d_fsig), m_error(0.0f)
 {}
 
 cc0::net::net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)()) : net()
 {
 	create(topography, num_layers, random_fn);
 }
-#include <iostream>
+
 void cc0::net::create(const uint32_t *topography, uint32_t num_layers, float (*random_fn)())
 {
 	assert(num_layers >= 2);
