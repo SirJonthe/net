@@ -195,6 +195,7 @@ namespace cc0
 
 			/// @brief Gets the number of neurons including the bias (size+1) in the layer.
 			/// @return The number of neurons including the bias in the layer.
+			/// @note The output layer does not have a bias.
 			uint64_t get_neuron_count_with_bias( void ) const;
 
 			/// @brief Returns the data to the weights for a given neuron.
@@ -297,14 +298,16 @@ namespace cc0
 
 		/// @brief Allocates memory within the neural network given the input sizes.
 		/// @param topography The number of neurons to allocate for each layer in the network.
-		/// @param num_layers The number of layers in the topography.
+		/// @param num_layers The number of layers in the topography. Must be at least 2.
 		/// @param random_fn The function used to initially randomize the layer data.
+		/// @note If num_layers is less than 2, the current net will be destroyed.
 		void create(const uint32_t *topography, uint32_t num_layers, float (*random_fn)() = common::random_unit);
 
 		/// @brief Allocates memory within the neural network given the input sizes.
-		/// @tparam num_layers The number of layers in the topography. Must be at least 2. 
+		/// @tparam num_layers The number of layers in the topography. Must be at least 2.
 		/// @param topography The number of neurons to allocate for each layer in the network.
 		/// @param random_fn The function used to initially randomize the layer data.
+		/// @note If num_layers is less than 2, the current net will be destroyed.
 		template < uint64_t num_layers >
 		void create(const uint32_t (&topography)[num_layers], float (*random_fn)() = common::random_unit);
 

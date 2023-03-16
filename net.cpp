@@ -124,27 +124,39 @@ uint64_t cc0::net::layer::get_gradient_count( void ) const
 
 uint64_t cc0::net::layer::get_neuron_count_with_bias( void ) const
 {
-	return m_neuron_count + 1;
+	return m_neuron_count + (get_weights_per_neuron() > 0 ? 1 : 0);
 }
 
 float *cc0::net::layer::get_weights(uint64_t neuron_index)
 {
-	return m_neurons + get_neuron_count_with_bias() + m_weights_per_neuron * neuron_index;
+	return
+		get_weights_per_neuron() > 0 ?
+		m_neurons + get_neuron_count_with_bias() + m_weights_per_neuron * neuron_index :
+		nullptr;
 }
 
 const float *cc0::net::layer::get_weights(uint64_t neuron_index) const
 {
-	return m_neurons + get_neuron_count_with_bias() + m_weights_per_neuron * neuron_index;
+	return
+		get_weights_per_neuron() > 0 ?
+		m_neurons + get_neuron_count_with_bias() + m_weights_per_neuron * neuron_index :
+		nullptr;
 }
 
 float *cc0::net::layer::get_delta_weights(uint64_t neuron_index)
 {
-	return get_weights(get_neuron_count_with_bias()) + m_weights_per_neuron * neuron_index;
+	return
+		get_weights_per_neuron() > 0 ?
+		get_weights(get_neuron_count_with_bias()) + m_weights_per_neuron * neuron_index :
+		0;
 }
 
 const float *cc0::net::layer::get_delta_weights(uint64_t neuron_index) const
 {
-	return get_weights(get_neuron_count_with_bias()) + m_weights_per_neuron * neuron_index;
+	return
+		get_weights_per_neuron() > 0 ?
+		get_weights(get_neuron_count_with_bias()) + m_weights_per_neuron * neuron_index :
+		0;
 }
 
 float *cc0::net::layer::get_bias_weights( void )
@@ -159,7 +171,7 @@ const float *cc0::net::layer::get_bias_weights( void ) const
 
 uint64_t cc0::net::layer::get_weights_per_neuron( void ) const
 {
-	return m_weights_per_neuron;
+	return m_next_layer != nullptr ? m_weights_per_neuron : 0;
 }
 
 uint64_t cc0::net::layer::get_total_size( void ) const
@@ -185,7 +197,12 @@ void cc0::net::layer::feed_forward(float (*transfer_fn)(float)) const
 
 uint64_t cc0::net::layer::calculate_memory_usage(uint64_t neuron_count, uint64_t weights_per_neuron)
 {
-	return (neuron_count + 1) + neuron_count + (neuron_count + 1) * (weights_per_neuron) * 2;
+	const uint64_t include_bias = weights_per_neuron > 0 ? 1 : 0;
+	return
+		(neuron_count + include_bias) +             // The number of neurons including the bias
+		neuron_count +                              // The number of gradients
+		(neuron_count + 1) * (weights_per_neuron) + // The number if weights
+		(neuron_count + 1) * (weights_per_neuron);  // The number of delta weights
 }
 
 void cc0::net::layer::update_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float))
@@ -275,31 +292,33 @@ cc0::net::net(const uint32_t *topography, uint32_t num_layers, float (*random_fn
 
 void cc0::net::create(const uint32_t *topography, uint32_t num_layers, float (*random_fn)())
 {
-	assert(num_layers >= 2);
-
-	uint64_t total_memory = 0;
-	for (uint64_t i = 0; i < num_layers; ++i) {
-		total_memory += layer::calculate_memory_usage(
-			topography[i],
-			i < num_layers - 1 ? topography[i + 1] : 0
-		);
-	}
-	m_buffer.create(total_memory);
-	m_layers.create(num_layers);
-
-	float *ptr = m_buffer;
-	if (ptr != nullptr) {
-		for (uint32_t i = 0; i < num_layers; ++i) {
-			m_layers[i] = layer(
-				ptr,
-				topography[i], i < num_layers - 1 ? topography[i + 1] : 0,
-				i == 0 ? nullptr : &m_layers[i - 1],
-				i == num_layers-1 ? nullptr : &m_layers[i + 1],
-				random_fn
+	if (num_layers > 1) {
+		uint64_t total_memory = 0;
+		for (uint64_t i = 0; i < num_layers; ++i) {
+			total_memory += layer::calculate_memory_usage(
+				topography[i],
+				i < num_layers - 1 ? topography[i + 1] : 0
 			);
-			ptr += m_layers[i].get_total_size();
 		}
-		assert(ptr == m_buffer + total_memory);
+		m_buffer.create(total_memory);
+		m_layers.create(num_layers);
+
+		float *ptr = m_buffer;
+		if (ptr != nullptr) {
+			for (uint32_t i = 0; i < num_layers; ++i) {
+				m_layers[i] = layer(
+					ptr,
+					topography[i], i < num_layers - 1 ? topography[i + 1] : 0,
+					i == 0 ? nullptr : &m_layers[i - 1],
+					i == num_layers-1 ? nullptr : &m_layers[i + 1],
+					random_fn
+				);
+				ptr += m_layers[i].get_total_size();
+			}
+			assert(ptr == m_buffer + total_memory);
+		}
+	} else {
+		destroy();
 	}
 }
 
