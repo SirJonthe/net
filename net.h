@@ -96,6 +96,9 @@ namespace cc0
 		{
 		private:
 			float    *m_neurons;
+			float    *m_gradients;
+			float    *m_weights;
+			float    *m_delta_weights;
 			uint64_t  m_neuron_count;
 			uint64_t  m_weights_per_neuron;
 			layer    *m_prev_layer;
@@ -255,6 +258,20 @@ namespace cc0
 			/// @param expected_outputs The expected outputs.
 			/// @param transfer_derived_fn The derived version of the transfer function.
 			void propagate_backward(const float *expected_outputs, float (*transfer_derived_fn)(float));
+
+			/// @brief Determines if this layer has a bias and weights.
+			/// @return True if this layer has bias and weights components.
+			/// @note A layer can not have a bias and no weights, or weights and no bias. A layer always either has both, or neither.
+			/// @note Generally only the output layer does not have a bias and weights. However, there is nothing preventing the user from initiating a non-output layer as having no weights per neuron, and thus no bias either.
+			bool has_bias_and_weights( void ) const;
+
+			/// @brief Determines if this layer is the first layer in the network.
+			/// @return True if this layer is the first layer in the network.
+			bool is_input_layer( void ) const;
+
+			/// @brief Determines if this layer is the last layer in the network.
+			/// @return True if this layer is the last layer in the network.
+			bool is_output_layer( void ) const;
 		};
 
 	private:

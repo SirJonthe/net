@@ -13,8 +13,10 @@ void cc0::net::layer::feed_forward(float neuron, const float *weights, layer &ne
 
 void cc0::net::layer::calculate_output_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float))
 {
+	float *g = get_gradients();
+	const float *n = get_neurons();
 	for (uint64_t i = 0; i < get_neuron_count(); ++i) {
-		get_gradients()[i] = calculate_output_gradient(get_neurons()[i], expected_outputs[i], transfer_derived_fn);
+		g[i] = calculate_output_gradient(n[i], expected_outputs[i], transfer_derived_fn);
 	}
 }
 
@@ -26,8 +28,9 @@ float cc0::net::layer::calculate_output_gradient(float neuron, float target, flo
 float cc0::net::layer::sum_dow(const float *weights, const cc0::net::layer &next_layer)
 {
 	float sum = 0.0f;
+	const float *g = next_layer.get_gradients();
 	for (uint64_t i = 0; i < next_layer.get_neuron_count(); ++i) {
-		sum += weights[i] * next_layer.get_gradients()[i];
+		sum += weights[i] * g[i];
 	}
 	return sum;
 }
@@ -35,8 +38,10 @@ float cc0::net::layer::sum_dow(const float *weights, const cc0::net::layer &next
 void cc0::net::layer::calculate_hidden_gradients(const cc0::net::layer &next_layer, float (*transfer_derived_fn)(float))
 {
 	if (this != nullptr) {
+		float *g = get_gradients();
+		const float *n = get_neurons();
 		for (uint64_t i = 0; i < get_neuron_count_with_bias(); ++i) {
-			get_gradients()[i] = calculate_hidden_gradient(get_neurons()[i], get_weights(i), next_layer, transfer_derived_fn);
+			g[i] = calculate_hidden_gradient(n[i], get_weights(i), next_layer, transfer_derived_fn);
 		}
 	}
 }
@@ -65,18 +70,30 @@ void cc0::net::layer::update_weights(uint64_t neuron_index, cc0::net::layer &pre
 		prev_layer.get_delta_weights(i)[neuron_index] =
 			ETA * neuron * gradient +
 			ALPHA * prev_layer.get_delta_weights(i)[neuron_index];
-		prev_layer.get_weights(i)[neuron_index] += prev_layer.get_delta_weights(i)[neuron_index]; // TODO I do not think we need to save the delta_weight. Just assign the delta here...
+		prev_layer.get_weights(i)[neuron_index] += prev_layer.get_delta_weights(i)[neuron_index];
 	}
 }
 
-cc0::net::layer::layer( void ) : m_neurons(nullptr), m_neuron_count(0), m_weights_per_neuron(0), m_prev_layer(nullptr), m_next_layer(nullptr)
+cc0::net::layer::layer( void ) : m_neurons(nullptr), m_gradients(nullptr), m_weights(nullptr), m_delta_weights(nullptr), m_neuron_count(0), m_weights_per_neuron(0), m_prev_layer(nullptr), m_next_layer(nullptr)
 {}
 
-cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_per_neuron, cc0::net::layer *prev_layer, cc0::net::layer *next_layer, float (*rand_fn)()) : m_neurons(memory), m_neuron_count(neuron_count), m_weights_per_neuron(weights_per_neuron), m_prev_layer(prev_layer), m_next_layer(next_layer)
+cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_per_neuron, cc0::net::layer *prev_layer, cc0::net::layer *next_layer, float (*rand_fn)()) : 
+	m_neurons(memory),
+	m_gradients(nullptr),
+	m_weights(nullptr),
+	m_delta_weights(nullptr),
+	m_neuron_count(neuron_count),
+	m_weights_per_neuron(weights_per_neuron),
+	m_prev_layer(prev_layer), m_next_layer(next_layer)
 {
+	m_gradients = m_neurons + get_neuron_count_with_bias();
+	if (has_bias_and_weights()) {
+		m_weights = m_gradients + get_gradient_count();
+		m_delta_weights = m_weights + get_weights_per_neuron() * get_neuron_count_with_bias();
+	}
 	for (uint64_t n = 0; n < get_neuron_count_with_bias(); ++n) {
 		float *w = get_weights(n);
-		for (uint64_t i = 0; i < m_weights_per_neuron; ++i) {
+		for (uint64_t i = 0; i < get_weights_per_neuron(); ++i) {
 			w[i] = rand_fn();
 		}
 	}
@@ -94,22 +111,24 @@ const float *cc0::net::layer::get_neurons( void ) const
 
 float *cc0::net::layer::get_gradients( void )
 {
-	return get_weights(get_neuron_count());
+	return m_gradients;
 }
 
 const float *cc0::net::layer::get_gradients( void ) const
 {
-	return get_weights(get_neuron_count());
+	return m_gradients;
 }
 
 float &cc0::net::layer::get_bias( void )
 {
-	return m_neurons[m_neuron_count];
+	float *n = has_bias_and_weights() ? m_neurons : nullptr;
+	return n[m_neuron_count];
 }
 
 float cc0::net::layer::get_bias( void ) const
 {
-	return m_neurons[m_neuron_count];
+	const float *n = has_bias_and_weights() ? m_neurons : nullptr;
+	return n[m_neuron_count];
 }
 
 uint64_t cc0::net::layer::get_neuron_count( void ) const
@@ -124,39 +143,39 @@ uint64_t cc0::net::layer::get_gradient_count( void ) const
 
 uint64_t cc0::net::layer::get_neuron_count_with_bias( void ) const
 {
-	return m_neuron_count + (get_weights_per_neuron() > 0 ? 1 : 0);
+	return m_neuron_count + (has_bias_and_weights() ? 1 : 0);
 }
 
 float *cc0::net::layer::get_weights(uint64_t neuron_index)
 {
 	return
-		get_weights_per_neuron() > 0 ?
-		m_neurons + get_neuron_count_with_bias() + m_weights_per_neuron * neuron_index :
+		has_bias_and_weights() ?
+		m_weights + m_weights_per_neuron * neuron_index :
 		nullptr;
 }
 
 const float *cc0::net::layer::get_weights(uint64_t neuron_index) const
 {
 	return
-		get_weights_per_neuron() > 0 ?
-		m_neurons + get_neuron_count_with_bias() + m_weights_per_neuron * neuron_index :
+		has_bias_and_weights() ?
+		m_weights + m_weights_per_neuron * neuron_index :
 		nullptr;
 }
 
 float *cc0::net::layer::get_delta_weights(uint64_t neuron_index)
 {
 	return
-		get_weights_per_neuron() > 0 ?
-		get_weights(get_neuron_count_with_bias()) + m_weights_per_neuron * neuron_index :
-		0;
+		has_bias_and_weights() ?
+		m_delta_weights + m_weights_per_neuron * neuron_index :
+		nullptr;
 }
 
 const float *cc0::net::layer::get_delta_weights(uint64_t neuron_index) const
 {
 	return
-		get_weights_per_neuron() > 0 ?
-		get_weights(get_neuron_count_with_bias()) + m_weights_per_neuron * neuron_index :
-		0;
+		has_bias_and_weights() ?
+		m_delta_weights + m_weights_per_neuron * neuron_index :
+		nullptr;
 }
 
 float *cc0::net::layer::get_bias_weights( void )
@@ -171,7 +190,7 @@ const float *cc0::net::layer::get_bias_weights( void ) const
 
 uint64_t cc0::net::layer::get_weights_per_neuron( void ) const
 {
-	return m_next_layer != nullptr ? m_weights_per_neuron : 0;
+	return !is_output_layer() ? m_weights_per_neuron : 0;
 }
 
 uint64_t cc0::net::layer::get_total_size( void ) const
@@ -199,10 +218,10 @@ uint64_t cc0::net::layer::calculate_memory_usage(uint64_t neuron_count, uint64_t
 {
 	const uint64_t include_bias = weights_per_neuron > 0 ? 1 : 0;
 	return
-		(neuron_count + include_bias) +             // The number of neurons including the bias
-		neuron_count +                              // The number of gradients
-		(neuron_count + 1) * (weights_per_neuron) + // The number if weights
-		(neuron_count + 1) * (weights_per_neuron);  // The number of delta weights
+		(neuron_count + include_bias) +             // The number of neurons including the optional bias.
+		(neuron_count + include_bias) +             // The number of gradients including the gradient for the optional bias.
+		(neuron_count + 1) * (weights_per_neuron) + // The number of weights.
+		(neuron_count + 1) * (weights_per_neuron);  // The number of delta weights.
 }
 
 void cc0::net::layer::update_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float))
@@ -227,6 +246,21 @@ void cc0::net::layer::propagate_backward(const float *expected_outputs, float (*
 {
 	update_gradients(expected_outputs, transfer_derived_fn);
 	update_weights();
+}
+
+bool cc0::net::layer::has_bias_and_weights( void ) const
+{
+	return get_weights_per_neuron() > 0;
+}
+
+bool cc0::net::layer::is_input_layer( void ) const
+{
+	return m_prev_layer == nullptr;
+}
+
+bool cc0::net::layer::is_output_layer( void ) const
+{
+	return m_next_layer == nullptr;
 }
 
 static bool init_default_rand( void )
