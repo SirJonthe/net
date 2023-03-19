@@ -4,6 +4,75 @@
 #include <cmath>
 #include "net.h"
 
+bool cc0::net::layer::mem_ok( void ) const
+{
+	struct seg
+	{
+		const float *a; // memory start, inclusive
+		const float *b; // memory end, inclusive
+		const char *name;
+	};
+
+	const seg full = { // The entire memory consumption must exactly fit here.
+		m_neurons,
+		m_neurons + calculate_memory_usage(m_neuron_count, m_weights_per_neuron) - 1,
+		"full"
+	};
+
+	net_internal::buffer<seg> segments;
+	segments.create(
+		1 + // one segment of neurons
+		1 + // one segment of gradients
+		get_weight_array_count() + // segments of weights
+		get_weight_array_count() // segments of delta weights
+	);
+
+	segments[0] = {
+		get_neurons(),
+		get_neurons() + get_neuron_count_with_bias() - 1,
+		"neurons"
+	};
+	segments[1] = {
+		get_gradients(),
+		get_gradients() + get_gradient_count() - 1,
+		"gradients"
+	};
+
+	for (uint64_t i = 0; i < get_weight_array_count(); ++i) {
+		segments[i + 2] = {
+			get_weights(i),
+			get_weights(i) + get_weights_per_neuron() - 1,
+			"weights"
+		};
+		segments[i + get_weight_array_count() + 2] = {
+			get_delta_weights(i),
+			get_delta_weights(i) + get_weights_per_neuron() - 1,
+			"delta weights"
+		};
+	}
+
+	uint64_t overrides = 0;
+
+	seg utilized = segments[segments.size()-1];
+	for (uint64_t i = 0; i < segments.size() - 1; ++i) {
+		seg a = segments[i];
+		utilized.a = utilized.a < a.a ? utilized.a : a.a;
+		utilized.b = utilized.b > a.b ? utilized.b : a.b;
+		for (uint64_t j = i + 1; j < segments.size(); ++j) {
+			seg b = segments[j];
+			overrides += (( a.a >= b.a && a.a <= b.b ) || ( a.b >= b.a && a.b <= b.b ));
+			overrides += (( b.a >= a.a && b.a <= a.b ) || ( b.b >= a.a && b.b <= a.b ));
+		}
+	}
+
+	overrides += !(utilized.a >= full.a && utilized.b <= full.b);
+	overrides += !(utilized.a == full.a && utilized.b == full.b);
+
+	const int64_t diff = (utilized.b - utilized.a) - (full.b - full.a);
+
+	return overrides == 0 && diff == 0;
+}
+
 void cc0::net::layer::feed_forward(float neuron, const float *weights, layer &next)
 {
 	for (uint64_t i = 0; i < next.get_neuron_count(); ++i) {
@@ -89,12 +158,14 @@ cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_pe
 	m_gradients = m_neurons + get_neuron_count_with_bias();
 	if (has_bias_and_weights()) {
 		m_weights = m_gradients + get_gradient_count();
-		m_delta_weights = m_weights + get_weights_per_neuron() * get_neuron_count_with_bias();
+		m_delta_weights = m_weights + get_weights_per_neuron() * get_weight_array_count();
 	}
-	for (uint64_t n = 0; n < get_neuron_count_with_bias(); ++n) {
+	for (uint64_t n = 0; n < get_weight_array_count(); ++n) {
 		float *w = get_weights(n);
+		float *d = get_delta_weights(n);
 		for (uint64_t i = 0; i < get_weights_per_neuron(); ++i) {
 			w[i] = rand_fn();
+			d[i] = 0.0f;
 		}
 	}
 }
@@ -141,9 +212,14 @@ uint64_t cc0::net::layer::get_gradient_count( void ) const
 	return get_neuron_count_with_bias();
 }
 
+uint64_t cc0::net::layer::get_bias_count( void ) const
+{
+	return has_bias_and_weights() ? 1 : 0;
+}
+
 uint64_t cc0::net::layer::get_neuron_count_with_bias( void ) const
 {
-	return m_neuron_count + (has_bias_and_weights() ? 1 : 0);
+	return m_neuron_count + get_bias_count();
 }
 
 float *cc0::net::layer::get_weights(uint64_t neuron_index)
@@ -188,6 +264,11 @@ const float *cc0::net::layer::get_bias_weights( void ) const
 	return get_weights(m_neuron_count);
 }
 
+uint64_t cc0::net::layer::get_weight_array_count( void ) const
+{
+	return has_bias_and_weights() ? get_neuron_count_with_bias() : 0;
+}
+
 uint64_t cc0::net::layer::get_weights_per_neuron( void ) const
 {
 	return !is_output_layer() ? m_weights_per_neuron : 0;
@@ -195,7 +276,7 @@ uint64_t cc0::net::layer::get_weights_per_neuron( void ) const
 
 uint64_t cc0::net::layer::get_total_size( void ) const
 {
-	return calculate_memory_usage(m_neuron_count, m_weights_per_neuron);
+	return calculate_memory_usage(get_neuron_count(), get_weights_per_neuron());
 }
 
 void cc0::net::layer::feed_forward(float (*transfer_fn)(float)) const
@@ -335,6 +416,7 @@ void cc0::net::create(const uint32_t *topography, uint32_t num_layers, float (*r
 			);
 		}
 		m_buffer.create(total_memory);
+		m_buffer.set_vals(0.0f);
 		m_layers.create(num_layers);
 
 		float *ptr = m_buffer;

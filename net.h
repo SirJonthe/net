@@ -44,6 +44,10 @@ namespace cc0
 			/// @brief Deletes the memory and zeroes the buffer internals.
 			void destroy( void );
 
+			/// @brief Sets all values in buffer to the input value.
+			/// @param val The input value to set all elements in the buffer.
+			void set_vals(const type_t &val);
+
 			/// @brief Gets the current number of elements (size) in the buffer.
 			/// @return The size of the buffer.
 			uint64_t size( void ) const;
@@ -57,13 +61,13 @@ namespace cc0
 
 		namespace transfer
 		{
-			/// @brief The fast sigmoid function.
+			/// @brief The fast sigmoid transfer function.
 			/// @param x The input.
 			/// @return The output.
 			/// @sa d_fsig
 			float fsig(float x);
 			
-			/// @brief Derive the output from the fast sigmoid function.
+			/// @brief Derive the output from the fast sigmoid transfer function.
 			/// @param y The input (output from fsig).
 			/// @return The output.
 			/// @sa fsig
@@ -103,6 +107,11 @@ namespace cc0
 			uint64_t  m_weights_per_neuron;
 			layer    *m_prev_layer;
 			layer    *m_next_layer;
+
+		public:
+			/// @brief Sanity checks that memory does not overlap each other due to wrong assumptions/implementation.
+			/// @return True if there is no overlap and memory is within allocated range.
+			bool mem_ok( void ) const;
 
 		private:
 			/// @brief Do a feed forward to the next layer using the current neuron value and its weight towards the neurons in the next layer.
@@ -196,6 +205,10 @@ namespace cc0
 			/// @return The number of gradients in this layer.
 			uint64_t get_gradient_count( void ) const;
 
+			/// @brief Returns the number of biases. Only ever 1 or 0.
+			/// @return 1 if there is a bias. 0 if there is no bias.
+			uint64_t get_bias_count( void ) const;
+
 			/// @brief Gets the number of neurons including the bias (size+1) in the layer.
 			/// @return The number of neurons including the bias in the layer.
 			/// @note The output layer does not have a bias.
@@ -226,6 +239,11 @@ namespace cc0
 			/// @brief Returns the weights for the bias.
 			/// @return The weights for  the bias.
 			const float *get_bias_weights( void ) const;
+
+			/// @brief Returns the number of weight arrays available.
+			/// @return The number of weight arrays in the layer.
+			/// @note This value also applies for delta weights.
+			uint64_t get_weight_array_count( void ) const;
 
 			/// @brief Gets the number of weights per neurons.
 			/// @return The number of weights per neuron.
@@ -423,6 +441,14 @@ void cc0::net_internal::buffer<type_t>::destroy( void )
 {
 	delete [] m_values;
 	m_size = 0;
+}
+
+template < typename type_t >
+void cc0::net_internal::buffer<type_t>::set_vals(const type_t &val)
+{
+	for (uint64_t i = 0; i < m_size; ++i) {
+		m_values[i] = val;
+	}
 }
 
 template < typename type_t >
