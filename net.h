@@ -120,6 +120,11 @@ namespace cc0
 			/// @param next The next layer in the neuron network.
 			static void feed_forward(float neuron, const float *weights, layer &next);
 
+			/// @brief Calculates the gradients in this layer, and all previous layers, based off of the expected outputs.
+			/// @param expected_outputs The expected outputs.
+			/// @param transfer_derived_fn The derived version of the transfer function.
+			void update_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float));
+
 			/// @brief Calculates the gradients in the output layer based off of the expected outputs.
 			/// @param expected_outputs The expected outputs.
 			/// @param transfer_derived_fn The derived version of the transfer function.
@@ -152,6 +157,9 @@ namespace cc0
 			/// @param transfer_derived_fn The derived version of the transfer function.
 			/// @return The gradient value.
 			static float calculate_hidden_gradient(float neuron, const float *weights, const layer &next_layer, float (*transfer_derived_fn)(float));
+
+			/// @brief Updates the connection weights in the previous layer to this layer.
+			void update_weights( void );
 
 			/// @brief Updates the connection weights in the previous layer to this layer.
 			/// @param prev_layer The previous layer. 
@@ -256,21 +264,13 @@ namespace cc0
 			/// @brief Feeds values forward to the next layer in the neural network.
 			/// @param transfer_fn The transfer function to use.
 			/// @note The number of neurons in the next layer must correspond to the number of weights allocated for the layer feeding values into the next layer.
-			void feed_forward(float (*transfer_fn)(float) = common::transfer::fsig) const;
+			void feed_forward(float (*transfer_fn)(float)) const;
 
 			/// @brief Calculates the memory usage (in number of elements) needed for a layer with the specified requirements.
 			/// @param neuron_count The number of neurons to be used.
 			/// @param weights_per_neuron The number of weights (corresponds to the number of neurons in the next layer, not including bias);
 			/// @return The number of floating point variables needed for a layer with the specified requirements.
 			static uint64_t calculate_memory_usage(uint64_t neuron_count, uint64_t weights_per_neuron);
-
-			/// @brief Calculates the gradients in this layer, and all previous layers, based off of the expected outputs.
-			/// @param expected_outputs The expected outputs.
-			/// @param transfer_derived_fn The derived version of the transfer function.
-			void update_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float));
-
-			/// @brief Updates the connection weights in the previous layer to this layer.
-			void update_weights( void );
 
 			/// @brief Updates gradients in this layer and all previous layers, then updates the weights in this layer and all previous layers.
 			/// @param expected_outputs The expected outputs.
@@ -297,16 +297,18 @@ namespace cc0
 		net_internal::buffer<layer>  m_layers;                        // The buffer containing layers.
 		float                        (*m_transfer_fn)(float);         // The transfer function.
 		float                        (*m_transfer_derived_fn)(float); // The derived version of the transfer function.
-		float                        m_error;                         // The total error.
+		float                        m_error;                         // The total error for the last iteration.
+		float                        m_average_error;                 // Total error for the last iterations defined by error series count.
+		uint64_t                     m_error_series_count;            // The number of iterations to smooth the average error over.
 
 	private:
 		/// @brief  Returns the output layer for access.
 		/// @return The output layer.
-		layer &get_output_layer( void );
+		layer &get_output_layer_rw( void );
 
 		/// @brief  Returns the input layer for access.
 		/// @return The input layer.
-		layer &get_input_layer( void );
+		layer &get_input_layer_rw( void );
 
 		/// @brief Updates the error.
 		/// @param layer The layer to generate the error for.
@@ -352,9 +354,10 @@ namespace cc0
 		/// @brief Trains the neural network by comparing the results in the output layer to the expected results and optimizing the weights and biases so that the results will more closely approximate the expected outputs next time.
 		/// @param inputs An array of values to be used in the input layer of the network. The number of values in the parameter array must correspond to the number of neurons allocated for the input layer.
 		/// @param expected_outputs Array of values that tries to tell the neural network if the results in the output layer matches the expected results. If not, the neural net will attempt to adjust its weights and biases to give a more accurate approximation during next run. The number of values in the parameter array must correspond to the number of neurons allocated for the output layer.
+		/// @return The error for the current iteration of training.
 		/// @sa feed_forward
 		/// @sa propagate_backward
-		void train(const float *inputs, const float *expected_outputs);
+		float train(const float *inputs, const float *expected_outputs);
 
 		/// @brief Produce results in the output layer given inputs in the input layer without performing a training step.
 		/// @param inputs An array of values to be used in the input layer of the network. The number of values in the parameter array must correspond to the number of neurons allocated for the input layer.
@@ -364,9 +367,10 @@ namespace cc0
 
 		/// @brief Refines neural net internals when the expected output is known in order to arrive at a better result feeding forward next time. Call this after feed_forward.
 		/// @param expected_outputs Array of values that tries to tell the neural network if the results in the output layer matches the expected results. If not, the neural net will attempt to adjust its weights and biases to give a more accurate approximation during next run. The number of values in the parameter array must correspond to the number of neurons allocated for the output layer.
+		/// @return The error for the session.
 		/// @sa train
 		/// @sa feed_forward
-		void propagate_backward(const float *expected_outputs);
+		float propagate_backward(const float *expected_outputs);
 
 		/// @brief Returns the number of layers in the neural network, including the input and output layers.
 		/// @return The number of layers in the neural network.
@@ -392,9 +396,14 @@ namespace cc0
 		/// @note Transfer functions are set to sensible defaults. There is no need to set these to other than default. 
 		void set_transfer_functions(float (*transfer_fn)(float), float (*transfer_derived_fn)(float));
 
-		/// @brief Returns the current error.
-		/// @return The current error.
-		float get_error( void ) const;
+		/// @brief Returns the recent average error. Uses the error series count to smooth the results.
+		/// @return The recent average error.
+		/// @sa set_error_series_count
+		float get_average_error( void ) const;
+
+		/// @brief Sets the number of iterations to smooth the error results over to get a less noisy output of the error over time.
+		/// @param count The number of iterations to smooth the error results over.
+		void set_error_series_count(uint64_t count);
 	};
 }
 

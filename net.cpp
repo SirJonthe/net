@@ -80,6 +80,14 @@ void cc0::net::layer::feed_forward(float neuron, const float *weights, layer &ne
 	}
 }
 
+void cc0::net::layer::update_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float))
+{
+	if (this != nullptr) {
+		calculate_output_gradients(expected_outputs, transfer_derived_fn);
+		m_prev_layer->calculate_hidden_gradients(*this, transfer_derived_fn);
+	}
+}
+
 void cc0::net::layer::calculate_output_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float))
 {
 	float *g = get_gradients();
@@ -120,6 +128,16 @@ float cc0::net::layer::calculate_hidden_gradient(float neuron, const float *weig
 	return sum_dow(weights, next_layer) * transfer_derived_fn(neuron);
 }
 
+void cc0::net::layer::update_weights( void )
+{
+	if (this != nullptr) {
+		if (m_next_layer != nullptr) {
+			m_next_layer->update_weights(*this);
+		}
+		m_prev_layer->update_weights();
+	}
+}
+
 void cc0::net::layer::update_weights(cc0::net::layer &prev_layer)
 {
 	for (uint64_t i = 0; i < get_neuron_count(); ++i) {
@@ -133,13 +151,15 @@ static constexpr float ALPHA = 0.5f; /// @brief Tunable parameter ALPHA. 0.0 to 
 void cc0::net::layer::update_weights(uint64_t neuron_index, cc0::net::layer &prev_layer) const
 {
 	// TODO This should be the other way around, i.e. the next layer is modifying this layer. That way we do not need indexes.
-	const float neuron = get_neurons()[neuron_index];
-	const float gradient = get_gradients()[neuron_index];
+	const float g = get_gradients()[neuron_index];
+	float *pn = prev_layer.get_neurons();
 	for (uint64_t i = 0; i < prev_layer.get_neuron_count_with_bias(); ++i) {
-		prev_layer.get_delta_weights(i)[neuron_index] =
-			ETA * neuron * gradient +
-			ALPHA * prev_layer.get_delta_weights(i)[neuron_index];
-		prev_layer.get_weights(i)[neuron_index] += prev_layer.get_delta_weights(i)[neuron_index];
+		float *pd = prev_layer.get_delta_weights(i);
+		pd[neuron_index] =
+			ETA * pn[i] * g +
+			ALPHA * pd[neuron_index]
+		;
+		prev_layer.get_weights(i)[neuron_index] += pd[neuron_index];
 	}
 }
 
@@ -153,12 +173,13 @@ cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_pe
 	m_delta_weights(nullptr),
 	m_neuron_count(neuron_count),
 	m_weights_per_neuron(weights_per_neuron),
-	m_prev_layer(prev_layer), m_next_layer(next_layer)
+	m_prev_layer(prev_layer), m_next_layer(weights_per_neuron > 0 ? next_layer : nullptr)
 {
 	m_gradients = m_neurons + get_neuron_count_with_bias();
 	if (has_bias_and_weights()) {
 		m_weights = m_gradients + get_gradient_count();
 		m_delta_weights = m_weights + get_weights_per_neuron() * get_weight_array_count();
+		get_bias() = 1.0f;
 	}
 	for (uint64_t n = 0; n < get_weight_array_count(); ++n) {
 		float *w = get_weights(n);
@@ -305,24 +326,6 @@ uint64_t cc0::net::layer::calculate_memory_usage(uint64_t neuron_count, uint64_t
 		(neuron_count + 1) * (weights_per_neuron);  // The number of delta weights.
 }
 
-void cc0::net::layer::update_gradients(const float *expected_outputs, float (*transfer_derived_fn)(float))
-{
-	if (this != nullptr) {
-		calculate_output_gradients(expected_outputs, transfer_derived_fn);
-		m_prev_layer->calculate_hidden_gradients(*this, transfer_derived_fn);
-	}
-}
-
-void cc0::net::layer::update_weights( void )
-{
-	if (this != nullptr) {
-		if (m_next_layer != nullptr) {
-			m_next_layer->update_weights(*this);
-		}
-		m_prev_layer->update_weights();
-	}
-}
-
 void cc0::net::layer::propagate_backward(const float *expected_outputs, float (*transfer_derived_fn)(float))
 {
 	update_gradients(expected_outputs, transfer_derived_fn);
@@ -344,15 +347,9 @@ bool cc0::net::layer::is_output_layer( void ) const
 	return m_next_layer == nullptr;
 }
 
-static bool init_default_rand( void )
-{
-	srand(time(nullptr));
-	return true;
-}
-
 float cc0::common::random_unit( void )
 {
-	static const bool seed_init = init_default_rand();
+	//static const bool seed_init = init_default_rand();
 	static constexpr float rand_weight = 1.0f / RAND_MAX;
 	return rand() * rand_weight;
 }
@@ -377,12 +374,12 @@ float cc0::common::transfer::d_tanh(float y)
 	return 1.0f - y * y;
 }
 
-cc0::net::layer &cc0::net::get_output_layer( void )
+cc0::net::layer &cc0::net::get_output_layer_rw( void )
 {
 	return m_layers[m_layers.size() - 1];
 }
 
-cc0::net::layer &cc0::net::get_input_layer( void )
+cc0::net::layer &cc0::net::get_input_layer_rw( void )
 {
 	return m_layers[0];
 }
@@ -395,9 +392,13 @@ void cc0::net::update_error(const layer &out, const float *expected_outputs)
 		m_error += delta * delta;
 	}
 	m_error = sqrtf(m_error / out.get_neuron_count());
+
+	m_average_error =
+		(m_average_error * m_error_series_count + m_error) /
+		(m_error_series_count + 1.0f);
 }
 
-cc0::net::net( void ) : m_buffer(), m_layers(), m_transfer_fn(common::transfer::fsig), m_transfer_derived_fn(common::transfer::d_fsig), m_error(0.0f)
+cc0::net::net( void ) : m_buffer(), m_layers(), m_transfer_fn(common::transfer::tanh), m_transfer_derived_fn(common::transfer::d_tanh), m_error(0.0f), m_average_error(0.0f), m_error_series_count(100)
 {}
 
 cc0::net::net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)()) : net()
@@ -444,16 +445,16 @@ void cc0::net::destroy( void )
 	m_layers.destroy();
 }
 
-void cc0::net::train(const float *inputs, const float *expected_outputs)
+float cc0::net::train(const float *inputs, const float *expected_outputs)
 {
 	feed_forward(inputs);
-	propagate_backward(expected_outputs);
+	return propagate_backward(expected_outputs);
 }
 
 void cc0::net::feed_forward(const float *inputs)
 {
 	if (m_layers.size() > 0) {
-		layer &in = get_input_layer();
+		layer &in = get_input_layer_rw();
 		for (uint64_t i = 0; i < in.get_neuron_count(); ++i) {
 			in.get_neurons()[i] = inputs[i];
 		}
@@ -461,13 +462,14 @@ void cc0::net::feed_forward(const float *inputs)
 	}
 }
 
-void cc0::net::propagate_backward(const float *expected_outputs)
+float cc0::net::propagate_backward(const float *expected_outputs)
 {
 	if (m_layers.size() > 0) {
-		layer &out = get_output_layer();
+		layer &out = get_output_layer_rw();
 		update_error(out, expected_outputs);
 		out.propagate_backward(expected_outputs, m_transfer_derived_fn);
 	}
+	return m_error;
 }
 
 uint64_t cc0::net::get_layer_count( void ) const
@@ -496,7 +498,12 @@ void cc0::net::set_transfer_functions(float (*transfer_fn)(float), float (*trans
 	m_transfer_derived_fn = transfer_derived_fn;
 }
 
-float cc0::net::get_error( void ) const
+float cc0::net::get_average_error( void ) const
 {
-	return m_error;
+	return m_average_error;
+}
+
+void cc0::net::set_error_series_count(uint64_t count)
+{
+	m_error_series_count = count > 0 ? count : 1;
 }
