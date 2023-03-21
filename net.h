@@ -85,10 +85,14 @@ namespace cc0
 			/// @sa tanh
 			float d_tanh(float y);
 		}
+
+		/// @brief Generate a random number between 0 rand RAND_MAX.
+		/// @return A random number between 0 rand RAND_MAX.
+		uint32_t random_u( void );
 		
 		/// @brief Generate a random number between 0-1.
 		/// @return A random number between 0-1.
-		float random_unit( void );
+		float random_f( void );
 	}
 
 	/// @brief The neural network.
@@ -178,8 +182,8 @@ namespace cc0
 			/// @param memory The memory that will be used by the layer as neuron data, bias, and weights. Note that one extra value added on top of neuron_count will be used as bias.
 			/// @param neuron_count The size of the input memory, for a total of neuron_count+1 including bias.
 			/// @param weights_per_neuron The number of weights per neuron in the input memory. The number of weights must correspond to the number of neurons in the next layer.
-			/// @param rand_fn The random function used to initiate weights to random values.
-			layer(float *memory, uint64_t neuron_count, uint64_t weights_per_neuron, layer *prev_layer, layer *next_layer, float (*rand_fn)() = cc0::common::random_unit);
+			/// @param rand_f_fn The random function used to initiate weights to random values.
+			layer(float *memory, uint64_t neuron_count, uint64_t weights_per_neuron, layer *prev_layer, layer *next_layer, float (*rand_f_fn)() = cc0::common::random_f);
 
 			/// @brief Returns the data for the neurons.
 			/// @return The data for the neurons.
@@ -324,21 +328,25 @@ namespace cc0
 		/// @param topography The number of neurons to allocate for each layer in the network.
 		/// @param num_layers The number of layers in the topography. Must be at least 2.
 		/// @param random_fn The function used to initially randomize the layer data.
-		net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)() = common::random_unit);
+		net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)() = common::random_f);
 
 		/// @brief Allocates memory within the neural network given the input sizes.
 		/// @tparam num_layers The number of layers in the topography. Must be at least 2. 
 		/// @param topography The number of neurons to allocate for each layer in the network.
 		/// @param random_fn The function used to initially randomize the layer data.
 		template < uint64_t num_layers >
-		net(const uint32_t (&topography)[num_layers], float (*random_fn)() = common::random_unit);
+		net(const uint32_t (&topography)[num_layers], float (*random_fn)() = common::random_f);
+
+		/// @brief Copies a neural network.
+		/// @param n The neural network to copy.
+		net(const net &n);
 
 		/// @brief Allocates memory within the neural network given the input sizes.
 		/// @param topography The number of neurons to allocate for each layer in the network.
 		/// @param num_layers The number of layers in the topography. Must be at least 2.
 		/// @param random_fn The function used to initially randomize the layer data.
 		/// @note If num_layers is less than 2, the current net will be destroyed.
-		void create(const uint32_t *topography, uint32_t num_layers, float (*random_fn)() = common::random_unit);
+		void create(const uint32_t *topography, uint32_t num_layers, float (*random_fn)() = common::random_f);
 
 		/// @brief Allocates memory within the neural network given the input sizes.
 		/// @tparam num_layers The number of layers in the topography. Must be at least 2.
@@ -346,7 +354,7 @@ namespace cc0
 		/// @param random_fn The function used to initially randomize the layer data.
 		/// @note If num_layers is less than 2, the current net will be destroyed.
 		template < uint64_t num_layers >
-		void create(const uint32_t (&topography)[num_layers], float (*random_fn)() = common::random_unit);
+		void create(const uint32_t (&topography)[num_layers], float (*random_fn)() = common::random_f);
 
 		/// @brief Deallocates all memory.
 		void destroy( void );
@@ -404,6 +412,12 @@ namespace cc0
 		/// @brief Sets the number of iterations to smooth the error results over to get a less noisy output of the error over time.
 		/// @param count The number of iterations to smooth the error results over.
 		void set_error_series_count(uint64_t count);
+
+		/// @brief Creates a new neural network given randomly selected weights and biases from two neural networks of the same topography.
+		/// @param a A neural net. 
+		/// @param b Another neural net.
+		/// @return The resulting, spliced neural network. If the input networks are not same topography, an empty neural network is returned.
+		static net splice(const net &a, const net &b, uint32_t (*rand_u_fn)() = common::random_u);
 	};
 }
 

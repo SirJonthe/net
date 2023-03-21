@@ -166,7 +166,7 @@ void cc0::net::layer::update_weights(uint64_t neuron_index, cc0::net::layer &pre
 cc0::net::layer::layer( void ) : m_neurons(nullptr), m_gradients(nullptr), m_weights(nullptr), m_delta_weights(nullptr), m_neuron_count(0), m_weights_per_neuron(0), m_prev_layer(nullptr), m_next_layer(nullptr)
 {}
 
-cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_per_neuron, cc0::net::layer *prev_layer, cc0::net::layer *next_layer, float (*rand_fn)()) : 
+cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_per_neuron, cc0::net::layer *prev_layer, cc0::net::layer *next_layer, float (*rand_f_fn)()) : 
 	m_neurons(memory),
 	m_gradients(nullptr),
 	m_weights(nullptr),
@@ -185,7 +185,7 @@ cc0::net::layer::layer(float *memory, uint64_t neuron_count, uint64_t weights_pe
 		float *w = get_weights(n);
 		float *d = get_delta_weights(n);
 		for (uint64_t i = 0; i < get_weights_per_neuron(); ++i) {
-			w[i] = rand_fn();
+			w[i] = rand_f_fn();
 			d[i] = 0.0f;
 		}
 	}
@@ -347,7 +347,12 @@ bool cc0::net::layer::is_output_layer( void ) const
 	return m_next_layer == nullptr;
 }
 
-float cc0::common::random_unit( void )
+uint32_t cc0::common::random_u( void )
+{
+	return (uint32_t(rand()) << 1) & (uint32_t(rand()) & 1);
+}
+
+float cc0::common::random_f( void )
 {
 	//static const bool seed_init = init_default_rand();
 	static constexpr float rand_weight = 1.0f / RAND_MAX;
@@ -404,6 +409,32 @@ cc0::net::net( void ) : m_buffer(), m_layers(), m_transfer_fn(common::transfer::
 cc0::net::net(const uint32_t *topography, uint32_t num_layers, float (*random_fn)()) : net()
 {
 	create(topography, num_layers, random_fn);
+}
+
+cc0::net::net(const cc0::net &n) : net()
+{
+	m_buffer.create(n.m_buffer.size());
+	float *mem = m_buffer;
+	m_layers.create(n.m_layers.size());
+	for (uint64_t i = 0; i < m_layers.size(); ++i) {
+		m_layers[i] = layer(
+			mem,
+			n.m_layers[i].get_neuron_count(),
+			n.m_layers[i].get_weights_per_neuron(),
+			i > 0 ? &m_layers[i-1] : nullptr,
+			i < m_layers.size() - 1 ? &m_layers[i+1] : nullptr,
+			nullptr // supply null to not initialize weights and biases
+		);
+		mem += layer::calculate_memory_usage(n.m_layers[i].get_neuron_count(), n.m_layers[i].get_weights_per_neuron());
+	}
+	for (uint64_t i = 0; i < m_buffer.size(); ++i) {
+		m_buffer[i] = n.m_buffer[i];
+	}
+	m_error               = n.m_error;
+	m_average_error       = n.m_average_error;
+	m_error_series_count  = n.m_error_series_count;
+	m_transfer_fn         = n.m_transfer_fn;
+	m_transfer_derived_fn = n.m_transfer_derived_fn;
 }
 
 void cc0::net::create(const uint32_t *topography, uint32_t num_layers, float (*random_fn)())
@@ -506,4 +537,48 @@ float cc0::net::get_average_error( void ) const
 void cc0::net::set_error_series_count(uint64_t count)
 {
 	m_error_series_count = count > 0 ? count : 1;
+}
+
+template < typename type_t >
+static const type_t &rselect(const type_t &a, const type_t &b, uint32_t (*rand_u_fn)())
+{
+	return (rand_u_fn() & 1) ? a : b;
+}
+
+cc0::net cc0::net::splice(const cc0::net &a, const cc0::net &b, uint32_t (*rand_u_fn)())
+{
+	cc0::net out;
+
+	if (a.get_layer_count() != b.get_layer_count()) {
+		return out;
+	}
+	
+	for (uint64_t i = 0; i < a.get_layer_count(); ++i) {
+		if (a.get_layer(i).get_neuron_count() != b.get_layer(i).get_neuron_count()) {
+			return out;
+		}
+	}
+
+	net_internal::buffer<uint32_t> topo(a.get_layer_count());
+	for (uint64_t i = 0; i < a.get_layer_count(); ++i) {
+		topo[i] = a.get_layer(i).get_neuron_count();
+	}
+
+	out.create(topo, topo.size());
+
+	for (uint64_t l = 0; l < out.get_layer_count(); ++l) {
+		for (uint64_t n = 0; n < out.m_layers[l].get_neuron_count_with_bias(); ++n) {
+			const net &r = rselect(a, b, rand_u_fn);
+			out.m_layers[l].get_neurons()[n] = r.m_layers[l].get_neurons()[n];
+			out.m_layers[l].get_gradients()[n] = r.m_layers[l].get_gradients()[n];
+		}
+		for (uint64_t wa = 0; wa < out.m_layers[l].get_weight_array_count(); ++wa) {
+			for (uint64_t w = 0; w < out.m_layers[l].get_weights_per_neuron(); ++w) {
+				const net &r = rselect(a, b, rand_u_fn);
+				out.m_layers[l].get_weights(wa)[w] = r.m_layers[l].get_weights(wa)[w];
+				out.m_layers[l].get_delta_weights(wa)[w] = r.m_layers[l].get_delta_weights(wa)[w];
+			}
+		}
+	}
+	return out;
 }
