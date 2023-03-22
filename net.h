@@ -1,5 +1,5 @@
-#ifndef NET_H_INCLUDED__
-#define NET_H_INCLUDED__
+#ifndef CC0_NET_H_INCLUDED__
+#define CC0_NET_H_INCLUDED__
 
 #include <cstdint>
 
