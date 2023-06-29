@@ -417,6 +417,7 @@ namespace cc0
 		/// @param a A neural net. 
 		/// @param b Another neural net.
 		/// @return The resulting, spliced neural network. If the input networks are not same topography, an empty neural network is returned.
+		/// @warning This has not been tested if this is useful.
 		static net splice(const net &a, const net &b, uint32_t (*rand_u_fn)() = common::random_u);
 	};
 }
