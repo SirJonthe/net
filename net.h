@@ -1,3 +1,9 @@
+/// @file
+/// @author github.com/SirJonthe
+/// @date 2022, 2023
+/// @copyright Public domain.
+/// @license CC0 1.0
+
 #ifndef CC0_NET_H_INCLUDED__
 #define CC0_NET_H_INCLUDED__
 
