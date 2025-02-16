@@ -1,4 +1,5 @@
-/// @file
+/// @file net.cpp
+/// @brief Contains a minimalist library that implements a fully connected neural network.
 /// @author github.com/SirJonthe
 /// @date 2022, 2023
 /// @copyright Public domain.
